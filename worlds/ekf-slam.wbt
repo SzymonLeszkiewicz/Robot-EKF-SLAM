@@ -1,0 +1,45 @@
+#VRML_SIM R2022a utf8
+WorldInfo {
+}
+Viewpoint {
+  orientation 0.1868956139485994 0.20845575946600914 -0.9600084509170872 1.5024709894619384
+  position -0.5852068685877045 3.169783479802766 1.6588936437449031
+}
+Wall {
+  translation 0.54 0.41 0
+  size 0.1 0.1 0.2
+}
+Wall {
+  translation 0.04 0.18 0
+  name "wall(1)"
+  size 0.1 0.1 0.2
+}
+Wall {
+  translation 0.05 0.77 0
+  name "wall(3)"
+  size 0.1 0.1 0.2
+}
+RectangleArena {
+  translation 0 0.54 0
+  floorSize 12 12
+}
+Wall {
+  translation 0.02 0.39 0
+  name "wall(2)"
+  size 0.1 0.3 0.2
+}
+E-puck {
+  translation -0.17 0.43 0
+  controller "main_ekf_slam"
+  turretSlot [
+    Lab4RobotisLds01 {
+      translation 0 0.02 0.02
+      noise 0.0043
+    }
+  ]
+}
+TexturedBackground {
+  texture "stadium"
+}
+TexturedBackgroundLight {
+}
