@@ -1,4 +1,4 @@
 .ekf-slam.wbproj
 /.idea
 /protos
-.gitignore
+*.gitignore
