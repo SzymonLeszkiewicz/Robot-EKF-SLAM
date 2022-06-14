@@ -159,7 +159,7 @@ def run_robot(robot):
     # get and enable lidar
     lidar = robot.getDevice("LDS-01")
     lidar.enable(SIM_TIMESTEP)
-    # lidar.enablePointCloud()
+    lidar.enablePointCloud()
 
     # Initialize lidar motors
     lidar_main_motor = robot.getDevice('LDS-01_main_motor')
@@ -202,6 +202,9 @@ def run_robot(robot):
         left_motor.setVelocity(cmd[0])
         right_motor.setVelocity(cmd[1])
 
+    for i in range(10):
+        robot.step(SIM_TIMESTEP)
+
     while robot.step(SIM_TIMESTEP) != -1:
 
         # sterowanie klawiatura
@@ -220,18 +223,17 @@ def run_robot(robot):
         # print('min', lidar.getMinRange())
         # print('max', lidar.getMaxRange())
         # print('getRangeImage', lidar_data)
-        # y = lidar_data
-        # x = np.linspace(math.pi * 1.5666666, 0, np.size(y))
-        # plt.polar(x, y)
-        # plt.pause(0.0000001)
-        # plt.clf()
+        y = lidar_data
+        x = np.linspace(math.pi *0.8, 0, np.size(y))
+        plt.polar(x, y)
+        plt.pause(0.0000001)
+        plt.clf()
 
         lidar_readings = []
         for i in range(21):
             lidar_found_loc =convert_lidar_reading_to_world_coord(i, lidar_data[i])
             if lidar_found_loc is not None:
                 lidar_readings.append(lidar_found_loc)
-        print(lidar_readings)
         # X = [i[0] for i in lidar_readings]
         # Y = [i[1] for i in lidar_readings]
         # # sleep(0.25)
