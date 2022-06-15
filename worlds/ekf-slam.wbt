@@ -2,8 +2,8 @@
 WorldInfo {
 }
 Viewpoint {
-  orientation 0.12883381660902313 0.858007531239474 -0.49721717994684717 0.5865411212765299
-  position -1.6759382364226965 0.9454488067060518 1.5427280391969804
+  orientation 0.13281347734480786 0.5405699492828503 -0.8307494870103243 0.5750792955072717
+  position -1.9906108111416538 1.1459851119875757 0.9193039830098562
 }
 Wall {
   translation 0.54 0.77 0
@@ -20,7 +20,7 @@ Wall {
   size 0.1 0.1 0.2
 }
 RectangleArena {
-  translation 0 0.54 0
+  translation -0.16 0.54 0
   floorSize 4 4
 }
 Wall {
@@ -29,8 +29,8 @@ Wall {
   size 0.1 2.5 0.2
 }
 E-puck {
-  translation -0.17 0.43 0
   controller "main_ekf_slam"
+  supervisor TRUE
   turretSlot [
     Lab4RobotisLds01 {
       translation 0 0.02 0.02
