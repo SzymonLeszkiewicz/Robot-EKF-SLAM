@@ -251,7 +251,7 @@ def distance_to_line(x, y, m, b):
     # Intersection point between y = m*x + b and x = m_o*x + b_o
     p_x = (b - b_o) / (m_o - m)
     p_y = ((m_o * (b - b_o)) / (m_o - m)) + b_o
-    print("przed bledem ", [x, y], [p_x, p_y])
+    # print("przed bledem ", [x, y], [p_x, p_y])
     return dist([x, y], [p_x, p_y])
 
 
@@ -360,6 +360,7 @@ def extract_line_landmarks(lidar_world_coords):
 
 def EKF_init(x_init):
     global Rt, Qt, mu, cov
+    global cov_new, mu_new
 
     Rt = 5 * np.array([[0.01, 0, 0],
                        [0, 0.01, 0],
@@ -454,15 +455,17 @@ def update_odometry(left_wheel_direction, right_wheel_direction, time_elapsed):
     # Update pose_y
     pose_y += math.sin(pose_theta) * time_elapsed * EPUCK_MAX_WHEEL_SPEED * (
             left_wheel_direction + right_wheel_direction) / 2.
-    print(time_elapsed, pose_theta, pose_y, pose_x)
+    print("Update odometry: [%3f, %3f, %3f]" % (pose_x, pose_y, pose_theta))
 
 
 def run_robot():
     global robot, ground_sensors, ground_sensor_readings, pose_x, pose_y, pose_theta, state
     global leftMotor, rightMotor, SIM_TIMESTEP, WHEEL_FORWARD, WHEEL_STOPPED, WHEEL_BACKWARDS
     global cov, Rt, Qt, mu
+    global left_wheel_direction, right_wheel_direction
 
     last_odometry_update_time = None
+    np.set_printoptions(precision=3, suppress=True)
 
     for i in range(10):
         robot.step(SIM_TIMESTEP)
@@ -480,88 +483,45 @@ def run_robot():
     last_EKF_update = None
     waypoint = True
 
-    print(start_pose)
     EKF_init(start_pose)
 
-    '''tymczasowo'''
-    robot_path = [[0.30928, 0.176902, 1.046032],
-                  [0.433827, 0.642393, 1.3084],
-                  [0.434453, 1.702051, 1.5702],
-                  [0.275088, 1.978296, 2.353669],
-                  [-0.144059, 1.9779351, 3.12076],
-                  [-0.484122, 1.556442, -1.83403],
-                  [-0.486042, 0.158664, -1.57152],
-                  [-0.345818, 0.018178, -0.783037],
-                  [-0.03, -0.05, 0]]
-    pos_idx = 0
-
+    left_wheel_direction = WHEEL_STOPPED
+    right_wheel_direction = WHEEL_STOPPED
     while robot.step(SIM_TIMESTEP) != -1:
-        sleep(0.025)
 
+        # sleep(0.25)
         loop_closure_detection_time = 0
 
-        # Zaaktualizowanie pozycji robota
+        # Odometria
         if last_odometry_update_time is None:
             last_odometry_update_time = robot.getTime()
 
         time_elapsed = robot.getTime() - last_odometry_update_time
+
         update_odometry(left_wheel_direction, right_wheel_direction, time_elapsed)
+
         last_odometry_update_time = robot.getTime()
-        print('superv', supervisor_ekf_slam.supervisor_get_robot_pose())
-        print("Current pose mu: [%5f, %5f, %5f]" % (mu[0][0], mu[1][0], mu[2][0]))
-        print("Current pose: [%5f, %5f, %5f]" % (pose_x, pose_y, pose_theta))
+        print(supervisor_ekf_slam.supervisor_get_robot_pose())
+        print("Current pose mu: [%3f, %3f, %3f]" % (mu[0][0], mu[1][0], mu[2][0]))
 
         if last_EKF_update is None:
             last_EKF_update = robot.getTime()
 
+        get_wheel_speeds(supervisor_ekf_slam.supervisor_get_robot_pose())
+
         # sterowanie klawiatura
-        # key = keyboard.getKey()
-        # if key in motor_cmd.keys():
-        #     steruj(motor_cmd[key])
-        # else:
-        #     left_motor.setVelocity(0)
-        #     right_motor.setVelocity(0)
+        key = keyboard.getKey()
+        if key in motor_cmd.keys():
+            steruj(motor_cmd[key])
+        elif key == ord('R'):
+            supervisor_ekf_slam.supervisor_reset_to_home()
+        elif key == ord('Q'):
+            supervisor_ekf_slam.supervisor_get_target_pose()
+        else:
+            left_wheel_direction, right_wheel_direction = 0, 0
+            left_motor.setVelocity(0)
+            right_motor.setVelocity(0)
 
-        '''print("Moving")
-        u_tmp = move(robot_path[pos_idx])
-        pos_idx+=1
-        if pos_idx == len(robot_path):
-            pos_idx = 0'''
-        if pos_idx == len(robot_path):
-            pos_idx = 0
-        target_pose = robot_path[pos_idx]
-        pos_idx += 1
-
-        # Sense
-        print("Sensing")
-        tmp_obs = generate_obs()
-        print("TMP_OBS: ", tmp_obs)
-        # for ob in tmp_obs:
-        #     add = True
-        #     for ob_2 in lidar_obs:
-        #         print(ob[2], ob_2[2])
-        #         if ob[2] == ob_2[2]:
-        #             add = False
-        #     if add:
-        #         lidar_obs.append(ob)
-        #
-        # print("Lidar Obs: ", lidar_obs)
-        # print("All lidar objects detected this run: ", landmark_globals)
-        # Lidar - wizualizacja
-        # lidar_data = lidar.getRangeImage()
-        # y = lidar_data
-        # x = np.linspace(math.pi * 0.8, 0, np.size(y))
-        # plt.polar(x, y)
-        # plt.pause(0.0000001)
-        # plt.clf()
-
-        # print("FOV", lidar.getFov())
-        # print("FOV2", lidar.getVerticalFov())
-        # print('min', lidar.getMinRange())
-        # print('max', lidar.getMaxRange())
-        # print('getRangeImage', lidar_data)
-
-        # Sense
         print("Sensing")
         tmp_obs = generate_obs()
         # print("TMP_OBS: ", tmp_obs)
@@ -601,6 +561,64 @@ def run_robot():
 
             print("Cov: ", cov)
             last_EKF_update = robot.getTime()
+
+        # print("Lidar Obs: ", lidar_obs)
+        # print("All lidar objects detected this run: ", landmark_globals)
+        # Lidar - wizualizacja
+        # lidar_data = lidar.getRangeImage()
+        # y = lidar_data
+        # x = np.linspace(math.pi * 0.8, 0, np.size(y))
+        # plt.polar(x, y)
+        # plt.pause(0.0000001)
+        # plt.clf()
+
+        '''print("FOV", lidar.getFov())
+        print("FOV2", lidar.getVerticalFov())
+        print('min', lidar.getMinRange())
+        print('max', lidar.getMaxRange())
+        print('getRangeImage', lidar_data)'''
+
+        # # Sense
+        # print("Sensing")
+        # tmp_obs = generate_obs()
+        # # print("TMP_OBS: ", tmp_obs)
+        # for ob in tmp_obs:
+        #     add = True
+        #     for ob_2 in lidar_obs:
+        #         # print(ob[2], ob_2[2])
+        #         if ob[2] == ob_2[2]:
+        #             add = False
+        #     if add:
+        #         lidar_obs.append(ob)
+        #
+        # print("Lidar Obs: ", lidar_obs)
+        # print("All lidar objects detected this run: ", landmark_globals)
+        #
+        # if robot.getTime() - last_EKF_update > 0.5:
+        #     print("EKF Run")
+        #     # Predict
+        #     # elif state == "predict":
+        #     print("EKF Predict")
+        #     mu_new, cov = EKF_predict(u, Rt)
+        #     mu = mu_new
+        #     # mu = np.append(mu,mu_new,axis=1)
+        #
+        #     # Update
+        #     print("EKF Update")
+        #     if len(lidar_obs) == 0:
+        #         print("Skipping as no new obs")
+        #         continue
+        #
+        #     mu_new, cov = EKF_update(lidar_obs, Qt)
+        #     mu = mu_new
+        #     lidar_obs = []
+        #     # mu = np.append(mu,mu_new,axis=1)
+        #
+        #     print("MU: ", mu)
+        #
+        #     print("Cov: ", cov)
+        #     last_EKF_update = robot.getTime()
+        print(' ')
 
 
 if __name__ == "__main__":

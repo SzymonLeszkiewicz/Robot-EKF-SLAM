@@ -1,5 +1,6 @@
 import copy
-from controller import Supervisor
+from controller import Supervisor, Node
+from time import sleep
 import numpy as np
 import math
 
@@ -7,9 +8,18 @@ supervisor = None
 robot_node = None
 target_node = None
 
+start_translation = None
+start_rotation = None
+np.set_printoptions(precision=3, suppress=True)
+
 
 def init_supervisor():
-    global supervisor, robot_node, target_node
+    print(' ')
+    print(' ')
+    print("Supervisor initiated")
+    print(' ')
+    print(' ')
+    global supervisor, robot_node, target_node, start_translation, start_rotation
 
     # create the Supervisor instance.
     supervisor = Supervisor()
@@ -22,6 +32,7 @@ def init_supervisor():
     for idx in range(root_children_field.getCount()):
         if root_children_field.getMFNode(idx).getTypeName() == "E-puck":
             robot_node = root_children_field.getMFNode(idx)
+
         if root_children_field.getMFNode(idx).getTypeName() == "Goal":
             target_node = root_children_field.getMFNode(idx)
 
@@ -35,8 +46,11 @@ def supervisor_reset_to_home():
     pos_field.setSFVec3f(start_translation)
     pos_field = robot_node.getField("rotation")
     pos_field.setSFRotation(start_rotation)
-    supervisor.resetPhysics()
-    print("Supervisor reset robot to start position")
+    print(' ')
+    print(' ')
+    print("*****Supervisor Reset robot to start position*****")
+    print(' ')
+    print(' ')
 
 
 def supervisor_get_obstacle_positions():
@@ -74,6 +88,7 @@ def supervisor_get_robot_pose():
     """
     Returns robot position
     """
+    print("SUPERV ROBOT POSE", end = ' ')
     robot_position = np.array(robot_node.getField("translation").getSFVec3f())
     robot_pose = np.array(
         [robot_position[0], 1. - robot_position[2], robot_node.getField("rotation").getSFRotation()[3] + math.pi / 2])

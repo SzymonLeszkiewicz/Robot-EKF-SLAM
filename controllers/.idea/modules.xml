@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/../../EKF-SLAM-main/EKF-SLAM-main/controllers/SLAM_controller/.idea/SLAM_controller.iml" filepath="$PROJECT_DIR$/../../EKF-SLAM-main/EKF-SLAM-main/controllers/SLAM_controller/.idea/SLAM_controller.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/controllers.iml" filepath="$PROJECT_DIR$/.idea/controllers.iml" />
     </modules>
   </component>
