@@ -2,29 +2,35 @@
 WorldInfo {
 }
 Viewpoint {
-  orientation 0.13281347734480786 0.5405699492828503 -0.8307494870103243 0.5750792955072717
-  position -1.9906108111416538 1.1459851119875757 0.9193039830098562
+  orientation 0.19219474705447773 -0.14183075116085414 -0.9710536634140325 4.385128212888996
+  position 1.2654406843763435 -3.0077314743378665 1.6529906404179742
 }
 Wall {
-  translation 0.54 0.77 0
+  translation 0.26 0.21 0
   size 0.1 0.1 0.2
 }
 Wall {
-  translation 0.5 0.18 0
+  translation -1.15 0.31 0
   name "wall(1)"
   size 0.1 0.1 0.2
 }
 Wall {
-  translation 1.01 0.77 0
+  translation -0.39 0.29 0
   name "wall(3)"
   size 0.1 0.1 0.2
 }
 RectangleArena {
-  translation -0.16 0.54 0
-  floorSize 4 4
+  translation 0.86 0.54 0
+  floorSize 8 8
+}
+DEF Goal CardboardBox {
+  translation 0.77 -0.25 0.05
+  name "Goal"
+  size 0.1 0.1 0.1
 }
 Wall {
-  translation 1.35 0.39 0
+  translation -1.25935 -1.31654 0
+  rotation 0 0 -1 0.785396
   name "wall(2)"
   size 0.1 2.5 0.2
 }

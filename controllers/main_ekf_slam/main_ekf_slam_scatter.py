@@ -18,8 +18,8 @@ LIDAR_ANGLE_RANGE = 6.2831  # 360 degrees
 pose_x = 0
 pose_y = 0
 pose_theta = 0
-left_wheel_direction = 0
-right_wheel_direction = 0
+lw_kierunek = 0
+rw_kierunek = 0
 
 
 def perform_least_squares_line_estimate(lidar_world_coords, selected_points):

@@ -9,78 +9,56 @@ import matplotlib.pyplot as plt
 
 import supervisor_ekf_slam
 
-state = "sense"  # Drive along the course
-USE_ODOMETRY = False  # False for ground truth pose information, True for real odometry
-
-# create the Robot instance.
 supervisor_ekf_slam.init_supervisor()
 robot = supervisor_ekf_slam.supervisor
 
-# Map Variables
-MAP_BOUNDS = [1., 1.]
-CELL_RESOLUTIONS = np.array([0.1, 0.1])  # 10cm per cell
-NUM_X_CELLS = int(MAP_BOUNDS[0] / CELL_RESOLUTIONS[0])
-NUM_Y_CELLS = int(MAP_BOUNDS[1] / CELL_RESOLUTIONS[1])
 
-world_map = np.zeros([NUM_Y_CELLS, NUM_X_CELLS])
 
-# Ground Sensor Measurements under this threshold are black
-# measurements above this threshold can be considered white.
-GROUND_SENSOR_THRESHOLD = 600  # Light intensity units
-LIDAR_SENSOR_MAX_RANGE = 5.  # 3 # Meters
-LIDAR_ANGLE_BINS = 21  # 21 Bins to cover the angular range of the lidar, centered at 10
-LIDAR_ANGLE_RANGE = 1.5708  # 90 degrees, 1.5708 radians
 
-# RANSAC values
-MAX_TRIALS = 1000  # Max times to run algorithm
-MAX_SAMPLE = 10  # Randomly select X points
-MIN_LINE_POINTS = 6  # If less than 5 points left, stop algorithm
-RANSAC_TOLERANCE = 0.15  # If point is within 20 cm of line, it is part of the line
-RANSAC_CONSENSUS = 6  # At least 5 points required to determine if a line
+LIDAR_SENSOR_MAX_RANGE = 5.
+LIDAR_ANGLE_BINS = 21
+LIDAR_ANGLE_RANGE = 1.5708
 
-# Robot Pose Values
+MAX_TRIALS = 1000
+MAX_SAMPLE = 10
+MIN_LINE_POINTS = 6
+RANSAC_TOLERANCE = 0.15
+RANSAC_CONSENSUS = 6
+
 pose_x = 0
 pose_y = 0
 pose_theta = 0
-left_wheel_direction = 0
-right_wheel_direction = 0
+lw_kierunek = 0
+rw_kierunek = 0
 
-# Constants to help with the Odometry update
 WHEEL_FORWARD = 1
 WHEEL_STOPPED = 0
 WHEEL_BACKWARD = -1
 
-# GAIN Values
 theta_gain = 1.0
 distance_gain = 0.3
 
 MAX_VEL_REDUCTION = 0.25
 EPUCK_MAX_WHEEL_SPEED = 0.125 * MAX_VEL_REDUCTION  # m/s
 EPUCK_AXLE_DIAMETER = 0.053
-EPUCK_WHEEL_RADIUS = 0.0205  # ePuck's wheels are 0.041m in diameter.
+EPUCK_WHEEL_RADIUS = 0.0205
 
-# Index into ground_sensors and ground_sensor_readings for each of the 3 onboard sensors.
-LEFT_IDX = 0
-CENTER_IDX = 1
-RIGHT_IDX = 2
+
 WHEEL_FORWARD = 1
 WHEEL_STOPPED = 0
 WHEEL_BACKWARD = -1
 
-lidar_data = np.zeros(LIDAR_ANGLE_BINS)
+dane_lidar = np.zeros(LIDAR_ANGLE_BINS)
 
 step = LIDAR_ANGLE_RANGE / LIDAR_ANGLE_BINS
 
-lidar_offsets = np.linspace(step * (LIDAR_ANGLE_BINS // 2), -step * (LIDAR_ANGLE_BINS // 2), LIDAR_ANGLE_BINS)
 
-# EKF Vars
-n = 20  # number of static landmarks
+n = 20
 mu = []
 cov = []
 mu_new = []
 cov_new = []
 
-# Stored global [x, y, j] for observed landmarks to check if the landmark has been seen before (is within 0.05 cm radius of previous x, y)
 landmark_globals = []
 
 SIM_TIMESTEP = int(robot.getBasicTimeStep())
@@ -91,11 +69,11 @@ left_motor.setPosition(float('inf'))
 right_motor.setPosition(float('inf'))
 left_motor.setVelocity(0.0)
 right_motor.setVelocity(0.0)
-# get and enable lidar
+# Lidar
 lidar = robot.getDevice("LDS-01")
 lidar.enable(SIM_TIMESTEP)
 lidar.enablePointCloud()
-# Initialize lidar motors
+# lidar motory
 lidar_main_motor = robot.getDevice('LDS-01_main_motor')
 lidar_secondary_motor = robot.getDevice('LDS-01_secondary_motor')
 lidar_main_motor.setPosition(float('inf'))
@@ -107,13 +85,12 @@ lidar_secondary_motor.setVelocity(60.0)
 keyboard = Keyboard()
 keyboard.enable(SIM_TIMESTEP)
 
-
 def steruj(cmd):
     left_motor.setVelocity(cmd[0])
     right_motor.setVelocity(cmd[1])
 
 
-motor_cmd = {
+komendy_kola = {
     ord("W"): (max_speed, max_speed),
     ord("S"): (-max_speed, -max_speed),
     ord("A"): (-max_speed / 2, max_speed / 2),
@@ -122,46 +99,25 @@ motor_cmd = {
 
 
 def get_bounded_theta(theta):
-    '''
-    Returns theta bounded in [-PI, PI]
-    '''
+
     while theta > math.pi: theta -= 2. * math.pi
     while theta < -math.pi: theta += 2. * math.pi
     return theta
 
 
-def convert_lidar_reading_to_world_coord(lidar_bin, lidar_distance):
-    """
-    @param lidar_bin: The beam index that provided this measurement
-    @param lidar_distance: The distance measurement from the sensor for that beam
-    @return world_point: List containing the corresponding (x,y) point in the world frame of reference
-    """
+def lidar_koordynaty(lidar_bin, lidar_distance):
 
-    # YOUR CODE HERE
-    # print("Dist:", lidar_distance, "Ang:", lidar_bin)
-
-    # No detection
-    if (lidar_distance > LIDAR_SENSOR_MAX_RANGE):  # or lidar_distance > math.sqrt(2)):
+    if (lidar_distance > LIDAR_SENSOR_MAX_RANGE):
         return None
-
-    # Lidar centered at robot 0,0 so no translation needed
-    # Convert lidar -> robot adding math.pi/2 to fix direction
     bQ_x = math.sin(lidar_bin + math.pi / 2) * lidar_distance
     bQ_y = math.cos(lidar_bin + math.pi / 2) * lidar_distance
-    # print(bQ_x, bQ_y)
-    # convert robot -> world
     x = math.cos(pose_theta) * bQ_x - math.sin(pose_theta) * bQ_y + pose_x
     y = math.sin(pose_theta) * bQ_x + math.cos(pose_theta) * bQ_y + pose_y
-    # print(x,y)
     return [x, y]
 
 
-def get_wheel_speeds(target_pose):
-    '''
-    @param target_pose: Array of (x,y,theta) for the destination robot pose
-    @return motor speed as percentage of maximum for left and right wheel motors
-    '''
-    global pose_x, pose_y, pose_theta, left_wheel_direction, right_wheel_direction
+def kola_predkosc(target_pose):
+    global pose_x, pose_y, pose_theta, lw_kierunek, rw_kierunek
 
     pose_x, pose_y, pose_theta = supervisor_ekf_slam.supervisor_get_robot_pose()
 
@@ -198,10 +154,10 @@ def get_wheel_speeds(target_pose):
         left_speed_pct = 0
         right_speed_pct = 0
 
-    left_wheel_direction = left_speed_pct * MAX_VEL_REDUCTION
+    lw_kierunek = left_speed_pct * MAX_VEL_REDUCTION
     phi_l_pct = left_speed_pct * MAX_VEL_REDUCTION * left_motor.getMaxVelocity()
 
-    right_wheel_direction = right_speed_pct * MAX_VEL_REDUCTION
+    rw_kierunek = right_speed_pct * MAX_VEL_REDUCTION
     phi_r_pct = right_speed_pct * MAX_VEL_REDUCTION * right_motor.getMaxVelocity()
 
     return phi_l_pct, phi_r_pct, (phi_l, phi_r)
@@ -212,12 +168,7 @@ def dist(point1, point2):
 
 
 def perform_least_squares_line_estimate(lidar_world_coords, selected_points):
-    """
-    @param lidar_world_coords: List of world coordinates read from lidar data (tuples of the form [x, y])
-    @param selected_points: Indicies of the points selected for this least squares line estimation
-    @return m, b: Slope and intercept for line estimated from data - y = mx + b
-    """
-    sum_y = sum_yy = sum_x = sum_xx = sum_yx = 0  # Sums of y coordinates, y^2 for each coordinate, x coordinates, x^2 for each coordinate, and y*x for each point
+    sum_y = sum_yy = sum_x = sum_xx = sum_yx = 0
 
     for point in selected_points:
         world_coord = lidar_world_coords[point]
@@ -236,19 +187,10 @@ def perform_least_squares_line_estimate(lidar_world_coords, selected_points):
 
 
 def distance_to_line(x, y, m, b):
-    """
-    @param x: x coordinate of point to find distance to line from
-    @param y: y coordinate of point to find distance to line from
-    @param m: slope of line
-    @param b: intercept of line
-    @return dist: the distance from the given point coordinates to the given line
-    """
 
-    # Line perpendicular to input line crossing through input point - m*m_o = -1 and y=m_o*x + b_o => b_o = y - m_o*x
     m_o = -1.0 / m
     b_o = y - m_o * x
 
-    # Intersection point between y = m*x + b and x = m_o*x + b_o
     p_x = (b - b_o) / (m_o - m)
     p_y = ((m_o * (b - b_o)) / (m_o - m)) + b_o
     # print("przed bledem ", [x, y], [p_x, p_y])
@@ -257,10 +199,8 @@ def distance_to_line(x, y, m, b):
 
 def get_line_landmark(line):
     global mu
-    # slope perpendicular to input line
     m_o = -1.0 / line[0]
 
-    # landmark position
     lm_x = line[1] / (m_o - line[0])
     lm_y = (m_o * line[1]) / (m_o - line[0])
     lm_j = 0
@@ -273,14 +213,11 @@ def get_line_landmark(line):
             break
         lm_j += 1
 
-    # If we didn't match the landmark to a previously found one and we're over the cap for new landmarks, return none to not calculate with this landmark
     if not found and len(landmark_globals) >= n:
         return None
-    # Otherwise, add it to our landmarks
     elif not found and len(landmark_globals) < n:
         landmark_globals.append([lm_x, lm_y, lm_j])
 
-    # convert to robot-relative positioning with radius from the robot and theta relative to robot
     r = dist([lm_x, lm_y], [mu[0][0], mu[1][0]])
     theta = math.atan2(lm_x, lm_y)
     theta = get_bounded_theta(theta - mu[2][0])
@@ -289,16 +226,13 @@ def get_line_landmark(line):
 
 
 def extract_line_landmarks(lidar_world_coords):
-    """
-    @param lidar_world_coords: List of world coordinates read from lidar data (tuples of the form [x, y])
-    @return found_landmarks: list of landmarks found through the RANSAC done on the lidar data
-    """
 
-    found_lines = []  # list of tuples of the form [m, b] of detected lines
 
-    linepoints = []  # list of laser data points not yet associated to a found line
+    found_lines = []
 
-    found_landmarks = []  # list to keep track of found landmarks from lines, stored as [r, theta, j] relative to robot
+    linepoints = []
+
+    found_landmarks = []
 
     for i in range(len(lidar_world_coords)):
         linepoints.append(i)
@@ -307,26 +241,23 @@ def extract_line_landmarks(lidar_world_coords):
     while (num_trials < MAX_TRIALS and len(linepoints) >= MIN_LINE_POINTS):
         rand_selected_points = []
 
-        # randomly choose up to MAX_SAMPLE points for the least squares
         for i in range(min(MAX_SAMPLE, len(linepoints))):
             temp = -1
             new_point = False
             while not new_point:
                 temp = random.randint(0,
-                                      len(linepoints) - 1)  # generate a random integer between 0 and our total number of remaining line points to choose from
+                                      len(linepoints) - 1)
                 if linepoints[temp] not in rand_selected_points:
                     new_point = True
             rand_selected_points.append(linepoints[temp])
 
-        # Now compute a line based on the randomly selected points
         m, b = perform_least_squares_line_estimate(lidar_world_coords, rand_selected_points)
 
-        consensus_points = []  # points matching along the found line
-        new_linepoints = []  # points not matching along the found line, if we say the line is a landmark, these are our new set of unmatched points
+        consensus_points = []
+        new_linepoints = []
 
         for point in linepoints:
             curr_point = lidar_world_coords[point]
-            # distance to line from the point
             dist = distance_to_line(curr_point[0], curr_point[1], m, b)
 
             if dist < RANSAC_TOLERANCE:
@@ -335,21 +266,16 @@ def extract_line_landmarks(lidar_world_coords):
                 new_linepoints.append(point)
 
         if len(consensus_points) >= RANSAC_CONSENSUS:
-            # Calculate an updated line based on every point within the consensus
             m, b = perform_least_squares_line_estimate(lidar_world_coords, consensus_points)
 
-            # add to found lines
             found_lines.append([m, b])
 
-            # rewrite the linepoints as the linepoints that didn't match with this line to only search unmatched points for lines
             linepoints = new_linepoints.copy()
 
-            # restart number of trials
             num_trials = 0
         else:
             num_trials += 1
 
-    # Now we'll calculate the point closest to the origin for each line found and add these as found landmarks
     for line in found_lines:
         new_landmark = get_line_landmark(line)
         if new_landmark is not None:
@@ -375,32 +301,30 @@ def EKF_init(x_init):
 
     cov[:3, :3] = np.eye(3, 3) * np.array(x_init).T
     cov_new = cov
+    print("PREDICT")
+    print(Rt)
+    print(Qt)
+    print(mu)
+    print(cov)
+
 
 
 def EKF_predict(u, Rt):
-    # global mu
-    # n = len(mu)
 
-    # Define motion model f(mu,u)
     [dtrans, drot1, drot2] = u
     motion = np.array([[dtrans * np.cos(mu[2][0] + drot1)],
                        [dtrans * np.sin(mu[2][0] + drot1)],
                        [get_bounded_theta(drot1 + drot2)]])
     F = np.append(np.eye(3), np.zeros((3, 2 * n)), axis=1)
 
-    # print(np.shape(F.T))
-    # print(np.shape(mu))
-    # print(np.shape((F.T).dot(motion)))
-    # Predict new state
+
     mu_bar = mu + (F.T).dot(motion)
 
-    # Define motion model Jacobian
     J = np.array([[0, 0, -dtrans * np.sin(get_bounded_theta(mu[2][0] + drot1))],
                   [0, 0, dtrans * np.cos(get_bounded_theta(mu[2][0] + drot1))],
                   [0, 0, 0]])
     G = np.eye(2 * n + 3) + (F.T).dot(J).dot(F)
 
-    # Predict new covariance
     cov_bar = G.dot(cov).dot(G.T) + (F.T).dot(Rt).dot(F)
 
     print('Predicted location\t x: {0:.2f} \t y: {1:.2f} \t theta: {2:.2f}'.format(mu_bar[0][0], mu_bar[1][0],
@@ -408,217 +332,176 @@ def EKF_predict(u, Rt):
     return mu_bar, cov_bar
 
 
+def EKF_update(obs, Qt):
+    global mu, mu_new, cov_new
+
+    for [r, theta, j] in obs:
+        j = int(j)
+        print([r, theta, j])
+        if cov[2 * j + 3][2 * j + 3] >= 1e6 and cov[2 * j + 4][2 * j + 4] >= 1e6:
+            mu[2 * j + 3][0] = mu[0][0] + r * np.cos(get_bounded_theta(theta + mu[2][0]))
+            mu[2 * j + 4][0] = mu[1][0] + r * np.sin(get_bounded_theta(theta + mu[2][0]))
+
+        delta = np.array([mu[2 * j + 3][0] - mu[0][0], mu[2 * j + 4][0] - mu[1][0]])
+        q = delta.T.dot(delta)
+        sq = np.sqrt(q)
+        z_theta = np.arctan2(delta[1], delta[0])
+        z_hat = np.array([[sq], [get_bounded_theta(z_theta - mu[2][0])]])
+
+        F = np.zeros((5, 2 * n + 3))
+        F[:3, :3] = np.eye(3)
+        F[3, 2 * j + 3] = 1
+        F[4, 2 * j + 4] = 1
+        H_low = np.array([[-sq * delta[0], -sq * delta[1], 0, sq * delta[0], sq * delta[1]],
+                          [delta[1], -delta[0], -q, -delta[1], delta[0]]], dtype='float')
+        H = 1 / q * H_low.dot(F)
+
+        K = cov.dot(H.T).dot(np.linalg.inv(H.dot(cov).dot(H.T) + Qt))
+        z_dif = np.array([[r], [theta]]) - z_hat
+        z_dif = (z_dif + np.pi) % (2 * np.pi) - np.pi
+
+        mu_new = mu + K.dot(z_dif)
+        cov_new = (np.eye(2 * n + 3) - K.dot(H)).dot(cov)
+    print("Cov_new: ", cov_new)
+
+    print('Updated location\t x: {0:.2f} \t y: {1:.2f} \t theta: {2:.2f}'.format(mu_new[0][0], mu_new[1][0],
+                                                                                 mu_new[2][0]))
+    return mu_new, cov_new
+
+
 def move(target_pose):
-    lspeed, rspeed, (phi_l, phi_r) = get_wheel_speeds(target_pose)
+    lspeed, rspeed, (phi_l, phi_r) = kola_predkosc(target_pose)
     dtrans = np.linalg.norm(np.array(target_pose[:2]) - np.array(mu[0][0], mu[1][0]))
     u = [dtrans, phi_l, phi_r]
-
-    print("lspeed: ", lspeed, "rspeed: ", rspeed)
-    left_motor.setVelocity(lspeed)
-    right_motor.setVelocity(rspeed)
 
     return u
 
 
-def generate_obs():
-    '''BIERZE DANE LIDARA I ZAMIENIA JE NA '''
-    global lidar, lidar_data
-    lidar_data = lidar.getRangeImage()
-    # print(lidar_data)
+def obiekty():
+    global lidar, dane_lidar
+    dane_lidar = lidar.getRangeImage()
 
-    # convert lidar to world locations
     lidar_readings = []
     for i in range(21):
-        lidar_found_loc = convert_lidar_reading_to_world_coord(i, lidar_data[i])
+        lidar_found_loc = lidar_koordynaty(i, dane_lidar[i])
         if lidar_found_loc is not None:
             lidar_readings.append(lidar_found_loc)
 
-    # print(lidar_readings)
-    # Run RANSAC on lidar_data
-    obs = extract_line_landmarks(lidar_readings)  # lidar readnig - dane lidar zamieniona to world coord
+    obs = extract_line_landmarks(lidar_readings)
 
-    return obs  # [r, theta, j]
+    return obs
 
 
-def update_odometry(left_wheel_direction, right_wheel_direction, time_elapsed):
-    '''
-    Given the amount of time passed and the direction each wheel was rotating,
-    update the robot's pose information accordingly
-    '''
+def odometria_update(left_wheel_direction, right_wheel_direction, time_elapsed):
     global pose_x, pose_y, pose_theta, EPUCK_MAX_WHEEL_SPEED, EPUCK_AXLE_DIAMETER
-    # Update pose_theta
+
     pose_theta += (
                           right_wheel_direction - left_wheel_direction) * time_elapsed * EPUCK_MAX_WHEEL_SPEED / EPUCK_AXLE_DIAMETER
-    # Update pose_x
+
     pose_x += math.cos(pose_theta) * time_elapsed * EPUCK_MAX_WHEEL_SPEED * (
             left_wheel_direction + right_wheel_direction) / 2.
-    # Update pose_y
+
     pose_y += math.sin(pose_theta) * time_elapsed * EPUCK_MAX_WHEEL_SPEED * (
             left_wheel_direction + right_wheel_direction) / 2.
-    print("Update odometry: [%3f, %3f, %3f]" % (pose_x, pose_y, pose_theta))
+
+    print("Odometria: [%3f, %3f, %3f]" % (pose_x, pose_y, pose_theta))
 
 
 def run_robot():
-    global robot, ground_sensors, ground_sensor_readings, pose_x, pose_y, pose_theta, state
+    global robot, ground_sensors, ground_sensor_readings, pose_x, pose_y, pose_theta
     global leftMotor, rightMotor, SIM_TIMESTEP, WHEEL_FORWARD, WHEEL_STOPPED, WHEEL_BACKWARDS
     global cov, Rt, Qt, mu
-    global left_wheel_direction, right_wheel_direction
-
-    last_odometry_update_time = None
+    global lw_kierunek, rw_kierunek
+    m = np.zeros((50, 50))
+    aktualizacja_odometria = None
     np.set_printoptions(precision=3, suppress=True)
 
     for i in range(10):
         robot.step(SIM_TIMESTEP)
 
-    # Pozycja robota
-    start_pose = supervisor_ekf_slam.supervisor_get_robot_pose()
-    pose_x, pose_y, pose_theta = start_pose
+    # Początkowa pozycji robota
+    pozycja_startowa = supervisor_ekf_slam.supervisor_get_robot_pose()
+    pose_x, pose_y, pose_theta = pozycja_startowa
 
     lidar_obs = []
-    u = [0, 0, 0]  # State vector
-    # Tolerances for reaching waypoint state
-    x_tol = 0.06
-    y_tol = 0.06
-    theta_tol = 0.1
-    last_EKF_update = None
-    waypoint = True
+    u = [0, 0, 0]  # wektor stanu
+    aktualizacja_EKF = None
 
-    EKF_init(start_pose)
+    EKF_init(pozycja_startowa)
 
-    left_wheel_direction = WHEEL_STOPPED
-    right_wheel_direction = WHEEL_STOPPED
     while robot.step(SIM_TIMESTEP) != -1:
-
-        # sleep(0.25)
-        loop_closure_detection_time = 0
-
         # Odometria
-        if last_odometry_update_time is None:
-            last_odometry_update_time = robot.getTime()
+        if aktualizacja_odometria is None:
+            aktualizacja_odometria = robot.getTime()
 
-        time_elapsed = robot.getTime() - last_odometry_update_time
+        uplyw_t = robot.getTime() - aktualizacja_odometria
+        print("supervisor pos", supervisor_ekf_slam.supervisor_get_robot_pose())
+        odometria_update(lw_kierunek, rw_kierunek, uplyw_t)
+        aktualizacja_odometria = robot.getTime()
+        # print("Current pose mu: [%3f, %3f, %3f]" % (mu[0][0], mu[1][0], mu[2][0]))
 
-        update_odometry(left_wheel_direction, right_wheel_direction, time_elapsed)
+        if aktualizacja_EKF is None:
+            aktualizacja_EKF = robot.getTime()
 
-        last_odometry_update_time = robot.getTime()
-        print(supervisor_ekf_slam.supervisor_get_robot_pose())
-        print("Current pose mu: [%3f, %3f, %3f]" % (mu[0][0], mu[1][0], mu[2][0]))
+        kola_predkosc(supervisor_ekf_slam.supervisor_get_robot_pose())
 
-        if last_EKF_update is None:
-            last_EKF_update = robot.getTime()
-
-        get_wheel_speeds(supervisor_ekf_slam.supervisor_get_robot_pose())
+        print("Przeszkoda:", supervisor_ekf_slam.supervisor_get_obstacle_positions())
 
         # sterowanie klawiatura
-        key = keyboard.getKey()
-        if key in motor_cmd.keys():
-            steruj(motor_cmd[key])
-        elif key == ord('R'):
+        klawisz = keyboard.getKey()
+        if klawisz in komendy_kola.keys():
+            steruj(komendy_kola[klawisz])
+
+        elif klawisz == ord('R'):
             supervisor_ekf_slam.supervisor_reset_to_home()
-        elif key == ord('Q'):
-            supervisor_ekf_slam.supervisor_get_target_pose()
+
         else:
-            left_wheel_direction, right_wheel_direction = 0, 0
             left_motor.setVelocity(0)
             right_motor.setVelocity(0)
 
-        print("Sensing")
-        tmp_obs = generate_obs()
-        # print("TMP_OBS: ", tmp_obs)
+        u = move(supervisor_ekf_slam.supervisor_get_robot_pose())
+
+        tmp_obs = obiekty()
         for ob in tmp_obs:
             add = True
             for ob_2 in lidar_obs:
-                # print(ob[2], ob_2[2])
                 if ob[2] == ob_2[2]:
                     add = False
             if add:
                 lidar_obs.append(ob)
 
-        print("Lidar Obs: ", lidar_obs)
-        print("All lidar objects detected this run: ", landmark_globals)
-
-        if robot.getTime() - last_EKF_update > 0.5:
+        if robot.getTime() - aktualizacja_EKF > 0.5:
             print("EKF Run")
-            # Predict
-            # elif state == "predict":
+
             print("EKF Predict")
             mu_new, cov = EKF_predict(u, Rt)
             mu = mu_new
-            # mu = np.append(mu,mu_new,axis=1)
 
-            # Update
             print("EKF Update")
             if len(lidar_obs) == 0:
-                print("Skipping as no new obs")
+                print("Brak nowych obiektów")
+                print(' ')
                 continue
 
             mu_new, cov = EKF_update(lidar_obs, Qt)
             mu = mu_new
             lidar_obs = []
-            # mu = np.append(mu,mu_new,axis=1)
 
-            print("MU: ", mu)
+            aktualizacja_EKF = robot.getTime()
 
-            print("Cov: ", cov)
-            last_EKF_update = robot.getTime()
-
-        # print("Lidar Obs: ", lidar_obs)
-        # print("All lidar objects detected this run: ", landmark_globals)
-        # Lidar - wizualizacja
-        # lidar_data = lidar.getRangeImage()
-        # y = lidar_data
-        # x = np.linspace(math.pi * 0.8, 0, np.size(y))
-        # plt.polar(x, y)
+        print("Lidar: ", lidar_obs)
+        print("Lidar dane ", landmark_globals)
+        # for i in landmark_globals:
+        #     plt.scatter(i[0], i[1])
         # plt.pause(0.0000001)
         # plt.clf()
-
-        '''print("FOV", lidar.getFov())
-        print("FOV2", lidar.getVerticalFov())
-        print('min', lidar.getMinRange())
-        print('max', lidar.getMaxRange())
-        print('getRangeImage', lidar_data)'''
-
-        # # Sense
-        # print("Sensing")
-        # tmp_obs = generate_obs()
-        # # print("TMP_OBS: ", tmp_obs)
-        # for ob in tmp_obs:
-        #     add = True
-        #     for ob_2 in lidar_obs:
-        #         # print(ob[2], ob_2[2])
-        #         if ob[2] == ob_2[2]:
-        #             add = False
-        #     if add:
-        #         lidar_obs.append(ob)
-        #
-        # print("Lidar Obs: ", lidar_obs)
-        # print("All lidar objects detected this run: ", landmark_globals)
-        #
-        # if robot.getTime() - last_EKF_update > 0.5:
-        #     print("EKF Run")
-        #     # Predict
-        #     # elif state == "predict":
-        #     print("EKF Predict")
-        #     mu_new, cov = EKF_predict(u, Rt)
-        #     mu = mu_new
-        #     # mu = np.append(mu,mu_new,axis=1)
-        #
-        #     # Update
-        #     print("EKF Update")
-        #     if len(lidar_obs) == 0:
-        #         print("Skipping as no new obs")
-        #         continue
-        #
-        #     mu_new, cov = EKF_update(lidar_obs, Qt)
-        #     mu = mu_new
-        #     lidar_obs = []
-        #     # mu = np.append(mu,mu_new,axis=1)
-        #
-        #     print("MU: ", mu)
-        #
-        #     print("Cov: ", cov)
-        #     last_EKF_update = robot.getTime()
-        print(' ')
+        # Lidar - wizualizacja
+        lidar_data = lidar.getRangeImage()
+        y = lidar_data
+        x = np.linspace(math.pi * 0.8, 0, np.size(y))
+        plt.polar(x, y)
+        plt.pause(0.0000001)
+        plt.clf()
 
 
 if __name__ == "__main__":
